@@ -1,27 +1,48 @@
 const { Client } = require('discord.js-selfbot-v13');
 
 const TOKEN = process.env.TOKEN;
+const TOKEN2 = process.env.TOKEN2;
+const TOKEN3 = process.env.TOKEN3;
 const CHANNEL_ID = process.env.CHANNEL_ID;
 const MUDAE_ID = '432610292342587392';
 
 class HaAutomation {
     constructor() {
-        this.client = new Client({ checkUpdate: false });
+        this.clients = [];
         this.isRunning = false;
         this.haInterval = null;
-        this.channel = null;
+        this.channels = [];
         this.nextScheduledTime = null;
         this.usCounter = 0;
         this.usInterval = null;
-        this.lastKakeraClickAt = 0;
+        this.lastKakeraClickAt = [];
+        this.pendingClicks = new Map(); // Pour gérer les clics en rotation
     }
 
     async login() {
+        const tokens = [TOKEN, TOKEN2, TOKEN3].filter(t => t);
+        
+        if (tokens.length === 0) {
+            console.error("❌ Aucun token fourni");
+            process.exit(1);
+        }
+
         try {
-            await this.client.login(TOKEN);
-            console.log(`✅ Connecté en tant que ${this.client.user.username}`);
-            this.setupListeners();
-            this.channel = await this.client.channels.fetch(CHANNEL_ID);
+            for (let i = 0; i < tokens.length; i++) {
+                const client = new Client({ checkUpdate: false });
+                await client.login(tokens[i]);
+                console.log(`✅ Compte ${i + 1} connecté: ${client.user.username}`);
+                
+                this.clients.push(client);
+                this.lastKakeraClickAt.push(0);
+                
+                const channel = await client.channels.fetch(CHANNEL_ID);
+                this.channels.push(channel);
+                
+                this.setupListeners(client, i);
+            }
+            
+            console.log(`✅ ${this.clients.length} compte(s) connecté(s)`);
             this.startHaLoop();
         } catch (err) {
             console.error("❌ Erreur de connexion:", err);
@@ -29,11 +50,14 @@ class HaAutomation {
         }
     }
 
-    setupListeners() {
-        this.client.on('messageCreate', (message) => {
+    setupListeners(client, accountIndex) {
+        client.on('messageCreate', (message) => {
             if (message.channelId === CHANNEL_ID && message.author.id === MUDAE_ID) {
-                this.checkForLimitMessage(message);
-                this.tryClickKakeraButton(message);
+                // Seul le premier compte vérifie les limites
+                if (accountIndex === 0) {
+                    this.checkForLimitMessage(message);
+                }
+                this.tryClickKakeraButton(message, accountIndex);
             }
         });
     }
@@ -61,21 +85,54 @@ class HaAutomation {
         return null;
     }
 
-    async tryClickKakeraButton(message) {
+    async tryClickKakeraButton(message, accountIndex) {
         if (!this.embedFooterIncludes(message, 'Appartient à')) return;
-
-        const now = Date.now();
-        if (now - this.lastKakeraClickAt < 1500) return;
 
         const customId = this.findSpecificKakeraButton(message);
         if (!customId) return;
 
-        try {
-            this.lastKakeraClickAt = now;
-            await message.clickButton(customId);
-            console.log('✨ Bouton kakeraD cliqué (détection par label)');
-        } catch (err) {
-            console.error('❌ Erreur lors du clic du bouton kakera:', err?.message || err);
+        // Utiliser l'ID du message comme clé unique pour éviter les doublons
+        const messageId = message.id;
+        
+        // Si un clic est déjà en cours pour ce message, ignorer
+        if (this.pendingClicks.has(messageId)) {
+            return;
+        }
+
+        // Marquer ce message comme en cours de traitement
+        this.pendingClicks.set(messageId, true);
+
+        // Seul le premier compte (index 0) initie la rotation
+        if (accountIndex === 0) {
+            // Lancer la rotation des clics pour tous les comptes
+            for (let i = 0; i < this.clients.length; i++) {
+                const delay = i * 5000; // 0s, 5s, 10s...
+                
+                setTimeout(async () => {
+                    const now = Date.now();
+                    if (now - this.lastKakeraClickAt[i] < 1500) {
+                        console.log(`⏭️  Compte ${i + 1} ignoré (trop tôt)`);
+                        return;
+                    }
+
+                    try {
+                        // Récupérer le message depuis le client du compte i
+                        const channel = this.channels[i];
+                        const msg = await channel.messages.fetch(messageId);
+                        
+                        this.lastKakeraClickAt[i] = now;
+                        await msg.clickButton(customId);
+                        console.log(`✨ Compte ${i + 1} (${this.clients[i].user.username}) a cliqué sur kakeraD`);
+                    } catch (err) {
+                        console.error(`❌ Erreur compte ${i + 1} lors du clic:`, err?.message || err);
+                    }
+                }, delay);
+            }
+
+            // Nettoyer après le temps nécessaire pour tous les clics
+            setTimeout(() => {
+                this.pendingClicks.delete(messageId);
+            }, this.clients.length * 5000 + 1000);
         }
     }
 
@@ -102,8 +159,9 @@ class HaAutomation {
         console.log("🚀 Démarrage de l'envoi de $ha toutes les 3 secondes...");
 
         this.haInterval = setInterval(() => {
-            if (this.isRunning && this.channel) {
-                this.channel.send('$ha').catch(err => {
+            if (this.isRunning && this.channels.length > 0) {
+                // Seul le premier compte envoie $ha
+                this.channels[0].send('$ha').catch(err => {
                     console.error("❌ Erreur envoi $ha:", err);
                 });
             }
@@ -124,8 +182,9 @@ class HaAutomation {
         console.log("💰 Démarrage de l'envoi de $us 20 (50 fois)...");
 
         this.usInterval = setInterval(() => {
-            if (this.usCounter < 50 && this.channel) {
-                this.channel.send('$us 20').catch(err => {
+            if (this.usCounter < 50 && this.channels.length > 0) {
+                // Seul le premier compte envoie $us
+                this.channels[0].send('$us 20').catch(err => {
                     console.error("❌ Erreur envoi $us 20:", err);
                 });
                 this.usCounter++;
