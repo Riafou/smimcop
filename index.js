@@ -71,119 +71,70 @@ class HaAutomation {
         return Array.isArray(message.embeds) && message.embeds.some(e => (e?.footer?.text || '').includes(needle));
     }
 
-    // Fonction pour extraire tous les boutons d'un message (tente plusieurs méthodes)
-    extractAllButtons(message) {
-        const buttons = [];
-        
-        // Méthode 1: message.components (standard)
-        if (Array.isArray(message.components)) {
-            for (const row of message.components) {
-                if (row?.components && Array.isArray(row.components)) {
-                    buttons.push(...row.components);
-                } else if (Array.isArray(row)) {
-                    buttons.push(...row);
-                }
-            }
-        }
-        
-        // Méthode 2: message.components comme objet
-        if (buttons.length === 0 && message.components && typeof message.components === 'object') {
-            const comps = message.components;
-            if (Array.isArray(comps)) {
-                buttons.push(...comps);
-            } else {
-                for (const key in comps) {
-                    if (Array.isArray(comps[key])) {
-                        buttons.push(...comps[key]);
-                    }
-                }
-            }
-        }
-        
-        // Méthode 3: Utiliser les méthodes de la bibliothèque si disponibles
-        if (typeof message.components?.get === 'function') {
-            // Si c'est une Collection
-            buttons.push(...Array.from(message.components.values()));
-        }
-        
-        return buttons;
-    }
-
     findSpecificKakeraButton(message) {
         const TARGET_LABEL = 'kakeraD';
         
         console.log('\n🔍 === ANALYSE DES BOUTONS ===');
-        console.log('🔬 Structure du message:');
-        console.log(`   - message.components existe: ${!!message.components}`);
-        console.log(`   - message.components type: ${Array.isArray(message.components) ? 'Array' : typeof message.components}`);
         
-        // Essayer d'utiliser la méthode d'extraction
-        const allButtons = this.extractAllButtons(message);
-        console.log(`📦 ${allButtons.length} bouton(s) extrait(s) via extractAllButtons`);
-        
-        // Si aucune méthode n'a fonctionné, essayer l'accès direct
-        let components = null;
-        if (Array.isArray(message.components)) {
-            components = message.components;
-            console.log(`✅ Accès via message.components (Array)`);
-        } else if (message.components && typeof message.components === 'object') {
-            console.log('⚠️  message.components est un objet');
-            components = message.components;
-        }
-        
-        if (!components && allButtons.length === 0) {
+        if (!message.components || message.components.length === 0) {
             console.log('❌ Aucun composant trouvé dans le message');
-            console.log('🔍 Toutes les clés du message:', Object.keys(message));
             return null;
         }
+        
+        console.log(`📦 Nombre de rangées (rows): ${message.components.length}`);
         
         let buttonCount = 0;
         let foundTarget = false;
         let targetCustomId = null;
-        let targetButtonObject = null; // Stocker l'objet bouton complet
+        let targetButtonObject = null;
         
-        // Analyser les boutons extraits
-        if (allButtons.length > 0) {
-            console.log(`\n📋 Analyse de ${allButtons.length} bouton(s) extrait(s):`);
-            for (let i = 0; i < allButtons.length; i++) {
-                const c = allButtons[i];
-                buttonCount++;
-                const result = this.analyzeButton(c, buttonCount, TARGET_LABEL);
-                if (result.found) {
-                    foundTarget = true;
-                    targetCustomId = result.customId;
-                    targetButtonObject = c;
-                }
+        // Utiliser exactement la même structure que dans loli.js qui fonctionne
+        message.components.forEach((row, rowIndex) => {
+            console.log(`\n📂 Rangée (Row) #${rowIndex + 1}`);
+            
+            if (!row.components || row.components.length === 0) {
+                console.log('   ⚠️  Aucun composant dans cette rangée');
+                return;
             }
-        }
-        
-        // Analyser via la structure components standard
-        if (components && Array.isArray(components)) {
-            console.log(`\n📋 Analyse via structure components standard (${components.length} ligne(s)):`);
-            for (let rowIndex = 0; rowIndex < components.length; rowIndex++) {
-                const row = components[rowIndex];
-                let rowComponents = null;
+            
+            row.components.forEach((component, compIndex) => {
+                buttonCount++;
                 
-                if (row?.components && Array.isArray(row.components)) {
-                    rowComponents = row.components;
-                } else if (Array.isArray(row)) {
-                    rowComponents = row;
-                }
+                // Utiliser exactement la même structure que dans loli.js
+                const label = component.label || component.emoji?.name || "Sans label";
+                const customId = component.customId;
+                const type = component.type;
+                const disabled = component.disabled || false;
+                const style = component.style;
                 
-                if (rowComponents) {
-                    for (let compIndex = 0; compIndex < rowComponents.length; compIndex++) {
-                        const c = rowComponents[compIndex];
-                        buttonCount++;
-                        const result = this.analyzeButton(c, buttonCount, TARGET_LABEL);
-                        if (result.found) {
-                            foundTarget = true;
-                            targetCustomId = result.customId;
-                            targetButtonObject = c;
+                console.log(`   🔹 Bouton ${buttonCount}:`);
+                console.log(`      Type: ${type}`);
+                console.log(`      Label: "${label}"`);
+                console.log(`      Style: ${style}`);
+                console.log(`      🆔 Custom ID: "${customId || 'N/A'}"`);
+                console.log(`      Disabled: ${disabled ? "Oui" : "Non"}`);
+                
+                // Vérifier si c'est un bouton et si c'est le bouton cible
+                if (type === 'BUTTON' || type === 2) {
+                    if (!disabled && label === TARGET_LABEL && customId) {
+                        foundTarget = true;
+                        targetCustomId = customId;
+                        targetButtonObject = component;
+                        console.log(`      ✅ C'EST LE BOUTON CIBLE (${TARGET_LABEL}) !`);
+                    } else {
+                        if (disabled) {
+                            console.log(`      ⚠️  Ignoré: bouton désactivé`);
+                        } else if (label !== TARGET_LABEL) {
+                            console.log(`      ⚠️  Ignoré: label "${label}" ≠ "${TARGET_LABEL}"`);
+                        } else if (!customId) {
+                            console.log(`      ⚠️  Ignoré: pas de customId`);
                         }
                     }
+                } else {
+                    console.log(`      ⚠️  Ignoré: ce n'est pas un bouton (type: ${type})`);
                 }
-            }
-        }
+            });
+        });
         
         console.log(`\n📊 RÉSUMÉ: ${buttonCount} bouton(s) analysé(s)`);
         if (foundTarget) {
@@ -196,79 +147,6 @@ class HaAutomation {
         console.log('🔍 === FIN ANALYSE ===\n');
         
         return targetCustomId;
-    }
-
-    analyzeButton(c, buttonNumber, targetLabel) {
-        console.log(`\n   🔬 Structure complète du composant ${buttonNumber}:`, JSON.stringify(c, null, 2));
-        
-        // Essayer différentes façons d'accéder au label/name
-        // Dans discord.js-selfbot-v13, le label peut être dans "name" !
-        let label = c?.label;
-        if (!label && c?.name) label = c.name; // IMPORTANT: name au lieu de label
-        if (!label && c?.data?.label) label = c.data.label;
-        if (!label && c?.data?.name) label = c.data.name;
-        if (!label && c?.emoji?.name) label = c.emoji.name;
-        if (!label && c?.data?.emoji?.name) label = c.data.emoji.name;
-        
-        // Essayer différentes façons d'accéder au customId
-        // Le customId peut être dans "id" ou "custom_id" ou "customId"
-        let customId = c?.customId;
-        if (!customId && c?.id) customId = c.id; // IMPORTANT: id peut être le customId
-        if (!customId && c?.custom_id) customId = c.custom_id;
-        if (!customId && c?.data?.custom_id) customId = c.data.custom_id;
-        if (!customId && c?.data?.customId) customId = c.data.customId;
-        if (!customId && c?.data?.id) customId = c.data.id;
-        
-        // Essayer différentes façons d'accéder au type
-        let type = c?.type;
-        if (!type && c?.data?.type) type = c.data.type;
-        // Type 2 = BUTTON dans Discord API
-        const isButton = (type === 2 || type === 'BUTTON' || c?.type === 2 || c?.type === 'BUTTON');
-        
-        // Essayer différentes façons d'accéder à disabled
-        let disabled = c?.disabled;
-        if (disabled === undefined && c?.data?.disabled !== undefined) disabled = c.data.disabled;
-        if (disabled === undefined) disabled = false;
-        
-        const buttonInfo = {
-            type: type || 'UNKNOWN',
-            label: label || '(sans label)',
-            customId: customId || '(sans customId)',
-            disabled: disabled ? 'OUI' : 'NON',
-            style: c?.style || c?.data?.style || 'N/A'
-        };
-        
-        console.log(`  🔘 Bouton ${buttonNumber}:`);
-        console.log(`     - Type: ${buttonInfo.type} (raw: ${c?.type || c?.data?.type || 'N/A'})`);
-        console.log(`     - Label/Name: "${buttonInfo.label}" (raw label: ${c?.label || 'N/A'}, raw name: ${c?.name || 'N/A'})`);
-        console.log(`     - Custom ID: ${buttonInfo.customId} (raw id: ${c?.id || 'N/A'}, raw customId: ${c?.customId || 'N/A'}, raw custom_id: ${c?.custom_id || 'N/A'})`);
-        console.log(`     - Désactivé: ${buttonInfo.disabled}`);
-        console.log(`     - Style: ${buttonInfo.style}`);
-        console.log(`     - Est un bouton: ${isButton}`);
-        
-        if (isButton) {
-            const isTarget = !disabled && 
-                           label === targetLabel &&
-                           typeof customId === 'string' && 
-                           customId.length > 0;
-            
-            if (isTarget) {
-                console.log(`     ✅ C'EST LE BOUTON CIBLE (${targetLabel}) !`);
-                return { found: true, customId: customId };
-            } else {
-                if (disabled) {
-                    console.log(`     ⚠️  Ignoré: bouton désactivé`);
-                } else if (label !== targetLabel) {
-                    console.log(`     ⚠️  Ignoré: label "${label}" ≠ "${targetLabel}"`);
-                } else if (typeof customId !== 'string' || customId.length === 0) {
-                    console.log(`     ⚠️  Ignoré: customId invalide (trouvé: ${customId})`);
-                }
-                return { found: false, customId: null };
-            }
-        } else {
-            console.log(`     ⚠️  Ignoré: ce n'est pas un bouton (type: ${type})`);
-            return { found: false, customId: null };
-        }
     }
 
     async tryClickKakeraButton(message, accountIndex) {
