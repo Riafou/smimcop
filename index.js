@@ -42,12 +42,16 @@ class HaAutomation {
         return Array.isArray(message.embeds) && message.embeds.some(e => (e?.footer?.text || '').includes(needle));
     }
 
-    findFirstEnabledButtonCustomId(message) {
+    findSpecificKakeraButton(message) {
+        const TARGET_CUSTOM_ID = '1461032353781645352k1065363703173754930k0';
+        
         if (!Array.isArray(message.components)) return null;
         for (const row of message.components) {
             const components = row?.components || [];
             for (const c of components) {
-                if (c?.type === 'BUTTON' && !c.disabled && typeof c.customId === 'string' && c.customId.length > 0) {
+                if (c?.type === 'BUTTON' && 
+                    !c.disabled && 
+                    c.customId === TARGET_CUSTOM_ID) {
                     return c.customId;
                 }
             }
@@ -61,13 +65,13 @@ class HaAutomation {
         const now = Date.now();
         if (now - this.lastKakeraClickAt < 1500) return;
 
-        const customId = this.findFirstEnabledButtonCustomId(message);
+        const customId = this.findSpecificKakeraButton(message);
         if (!customId) return;
 
         try {
             this.lastKakeraClickAt = now;
             await message.clickButton(customId);
-            console.log('✨ Bouton kakera cliqué (détection "Appartient à")');
+            console.log('✨ Bouton kakera cliqué (custom ID spécifique)');
         } catch (err) {
             console.error('❌ Erreur lors du clic du bouton kakera:', err?.message || err);
         }
