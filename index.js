@@ -43,7 +43,7 @@ class HaAutomation {
     }
 
     findSpecificKakeraButton(message) {
-        const TARGET_LABEL = 'kakeraC';
+        const TARGET_LABEL = 'kakeraD';
         
         if (!Array.isArray(message.components)) return null;
         for (const row of message.components) {
@@ -73,7 +73,7 @@ class HaAutomation {
         try {
             this.lastKakeraClickAt = now;
             await message.clickButton(customId);
-            console.log('✨ Bouton kakeraC cliqué (détection par label)');
+            console.log('✨ Bouton kakeraD cliqué (détection par label)');
         } catch (err) {
             console.error('❌ Erreur lors du clic du bouton kakera:', err?.message || err);
         }
