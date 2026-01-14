@@ -43,7 +43,7 @@ class HaAutomation {
     }
 
     findSpecificKakeraButton(message) {
-        const TARGET_CUSTOM_ID = '1461032353781645352k1065363703173754930k0';
+        const TARGET_LABEL = 'kakeraC';
         
         if (!Array.isArray(message.components)) return null;
         for (const row of message.components) {
@@ -51,7 +51,9 @@ class HaAutomation {
             for (const c of components) {
                 if (c?.type === 'BUTTON' && 
                     !c.disabled && 
-                    c.customId === TARGET_CUSTOM_ID) {
+                    c.label === TARGET_LABEL &&
+                    typeof c.customId === 'string' && 
+                    c.customId.length > 0) {
                     return c.customId;
                 }
             }
@@ -71,7 +73,7 @@ class HaAutomation {
         try {
             this.lastKakeraClickAt = now;
             await message.clickButton(customId);
-            console.log('✨ Bouton kakera cliqué (custom ID spécifique)');
+            console.log('✨ Bouton kakeraC cliqué (détection par label)');
         } catch (err) {
             console.error('❌ Erreur lors du clic du bouton kakera:', err?.message || err);
         }
