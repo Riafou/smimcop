@@ -13,6 +13,7 @@ class HaAutomation {
         this.nextScheduledTime = null;
         this.usCounter = 0;
         this.usInterval = null;
+        this.lastKakeraClickAt = 0;
     }
 
     async login() {
@@ -32,8 +33,44 @@ class HaAutomation {
         this.client.on('messageCreate', (message) => {
             if (message.channelId === CHANNEL_ID && message.author.id === MUDAE_ID) {
                 this.checkForLimitMessage(message);
+                this.tryClickKakeraButton(message);
             }
         });
+    }
+
+    embedFooterIncludes(message, needle) {
+        return Array.isArray(message.embeds) && message.embeds.some(e => (e?.footer?.text || '').includes(needle));
+    }
+
+    findFirstEnabledButtonCustomId(message) {
+        if (!Array.isArray(message.components)) return null;
+        for (const row of message.components) {
+            const components = row?.components || [];
+            for (const c of components) {
+                if (c?.type === 'BUTTON' && !c.disabled && typeof c.customId === 'string' && c.customId.length > 0) {
+                    return c.customId;
+                }
+            }
+        }
+        return null;
+    }
+
+    async tryClickKakeraButton(message) {
+        if (!this.embedFooterIncludes(message, 'Appartient à')) return;
+
+        const now = Date.now();
+        if (now - this.lastKakeraClickAt < 1500) return;
+
+        const customId = this.findFirstEnabledButtonCustomId(message);
+        if (!customId) return;
+
+        try {
+            this.lastKakeraClickAt = now;
+            await message.clickButton(customId);
+            console.log('✨ Bouton kakera cliqué (détection "Appartient à")');
+        } catch (err) {
+            console.error('❌ Erreur lors du clic du bouton kakera:', err?.message || err);
+        }
     }
 
     checkForLimitMessage(message) {
