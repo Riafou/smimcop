@@ -140,6 +140,7 @@ class HaAutomation {
         let buttonCount = 0;
         let foundTarget = false;
         let targetCustomId = null;
+        let targetButtonObject = null; // Stocker l'objet bouton complet
         
         // Analyser les boutons extraits
         if (allButtons.length > 0) {
@@ -147,12 +148,12 @@ class HaAutomation {
             for (let i = 0; i < allButtons.length; i++) {
                 const c = allButtons[i];
                 buttonCount++;
-                this.analyzeButton(c, buttonCount, TARGET_LABEL, (found, customId) => {
-                    if (found) {
-                        foundTarget = true;
-                        targetCustomId = customId;
-                    }
-                });
+                const result = this.analyzeButton(c, buttonCount, TARGET_LABEL);
+                if (result.found) {
+                    foundTarget = true;
+                    targetCustomId = result.customId;
+                    targetButtonObject = c;
+                }
             }
         }
         
@@ -173,12 +174,12 @@ class HaAutomation {
                     for (let compIndex = 0; compIndex < rowComponents.length; compIndex++) {
                         const c = rowComponents[compIndex];
                         buttonCount++;
-                        this.analyzeButton(c, buttonCount, TARGET_LABEL, (found, customId) => {
-                            if (found) {
-                                foundTarget = true;
-                                targetCustomId = customId;
-                            }
-                        });
+                        const result = this.analyzeButton(c, buttonCount, TARGET_LABEL);
+                        if (result.found) {
+                            foundTarget = true;
+                            targetCustomId = result.customId;
+                            targetButtonObject = c;
+                        }
                     }
                 }
             }
@@ -187,6 +188,8 @@ class HaAutomation {
         console.log(`\n📊 RÉSUMÉ: ${buttonCount} bouton(s) analysé(s)`);
         if (foundTarget) {
             console.log(`✅ Bouton cible trouvé ! Custom ID: ${targetCustomId}`);
+            // Stocker l'objet bouton dans le message pour utilisation ultérieure
+            message._targetButton = targetButtonObject;
         } else {
             console.log(`❌ Bouton cible "${TARGET_LABEL}" NON TROUVÉ`);
         }
@@ -195,20 +198,26 @@ class HaAutomation {
         return targetCustomId;
     }
 
-    analyzeButton(c, buttonNumber, targetLabel, callback) {
+    analyzeButton(c, buttonNumber, targetLabel) {
         console.log(`\n   🔬 Structure complète du composant ${buttonNumber}:`, JSON.stringify(c, null, 2));
         
-        // Essayer différentes façons d'accéder au label
+        // Essayer différentes façons d'accéder au label/name
+        // Dans discord.js-selfbot-v13, le label peut être dans "name" !
         let label = c?.label;
+        if (!label && c?.name) label = c.name; // IMPORTANT: name au lieu de label
         if (!label && c?.data?.label) label = c.data.label;
+        if (!label && c?.data?.name) label = c.data.name;
         if (!label && c?.emoji?.name) label = c.emoji.name;
         if (!label && c?.data?.emoji?.name) label = c.data.emoji.name;
         
         // Essayer différentes façons d'accéder au customId
+        // Le customId peut être dans "id" ou "custom_id" ou "customId"
         let customId = c?.customId;
+        if (!customId && c?.id) customId = c.id; // IMPORTANT: id peut être le customId
+        if (!customId && c?.custom_id) customId = c.custom_id;
         if (!customId && c?.data?.custom_id) customId = c.data.custom_id;
         if (!customId && c?.data?.customId) customId = c.data.customId;
-        if (!customId && c?.custom_id) customId = c.custom_id;
+        if (!customId && c?.data?.id) customId = c.data.id;
         
         // Essayer différentes façons d'accéder au type
         let type = c?.type;
@@ -231,8 +240,8 @@ class HaAutomation {
         
         console.log(`  🔘 Bouton ${buttonNumber}:`);
         console.log(`     - Type: ${buttonInfo.type} (raw: ${c?.type || c?.data?.type || 'N/A'})`);
-        console.log(`     - Label: "${buttonInfo.label}" (raw: ${c?.label || c?.data?.label || 'N/A'})`);
-        console.log(`     - Custom ID: ${buttonInfo.customId} (raw: ${c?.customId || c?.data?.custom_id || c?.custom_id || 'N/A'})`);
+        console.log(`     - Label/Name: "${buttonInfo.label}" (raw label: ${c?.label || 'N/A'}, raw name: ${c?.name || 'N/A'})`);
+        console.log(`     - Custom ID: ${buttonInfo.customId} (raw id: ${c?.id || 'N/A'}, raw customId: ${c?.customId || 'N/A'}, raw custom_id: ${c?.custom_id || 'N/A'})`);
         console.log(`     - Désactivé: ${buttonInfo.disabled}`);
         console.log(`     - Style: ${buttonInfo.style}`);
         console.log(`     - Est un bouton: ${isButton}`);
@@ -245,20 +254,20 @@ class HaAutomation {
             
             if (isTarget) {
                 console.log(`     ✅ C'EST LE BOUTON CIBLE (${targetLabel}) !`);
-                callback(true, customId);
+                return { found: true, customId: customId };
             } else {
                 if (disabled) {
                     console.log(`     ⚠️  Ignoré: bouton désactivé`);
                 } else if (label !== targetLabel) {
                     console.log(`     ⚠️  Ignoré: label "${label}" ≠ "${targetLabel}"`);
                 } else if (typeof customId !== 'string' || customId.length === 0) {
-                    console.log(`     ⚠️  Ignoré: customId invalide`);
+                    console.log(`     ⚠️  Ignoré: customId invalide (trouvé: ${customId})`);
                 }
-                callback(false, null);
+                return { found: false, customId: null };
             }
         } else {
             console.log(`     ⚠️  Ignoré: ce n'est pas un bouton (type: ${type})`);
-            callback(false, null);
+            return { found: false, customId: null };
         }
     }
 
@@ -303,19 +312,27 @@ class HaAutomation {
         if (accountIndex === 0) {
             console.log(`🚀 Compte ${accountIndex + 1} initie la rotation des clics`);
             console.log(`⏱️  ${this.clients.length} compte(s) vont cliquer avec un délai de 5s entre chacun`);
+            
+            // Stocker l'objet bouton pour utilisation ultérieure
+            const targetButtonObject = message._targetButton;
+            
             // Lancer la rotation des clics pour tous les comptes
             for (let i = 0; i < this.clients.length; i++) {
                 const delay = i * 5000; // 0s, 5s, 10s...
                 
                 console.log(`⏰ Compte ${i + 1} programmé pour cliquer dans ${delay}ms`);
                 
+                // Capturer les variables dans la closure
+                const accountIndexForClick = i;
+                const customIdForClick = customId;
+                
                 setTimeout(async () => {
-                    console.log(`\n🖱️  === CLIC - Compte ${i + 1} ===`);
+                    console.log(`\n🖱️  === CLIC - Compte ${accountIndexForClick + 1} ===`);
                     const now = Date.now();
-                    const timeSinceLastClick = now - this.lastKakeraClickAt[i];
+                    const timeSinceLastClick = now - this.lastKakeraClickAt[accountIndexForClick];
                     
                     if (timeSinceLastClick < 1500) {
-                        console.log(`⏭️  Compte ${i + 1} ignoré: dernier clic il y a ${timeSinceLastClick}ms (< 1500ms)`);
+                        console.log(`⏭️  Compte ${accountIndexForClick + 1} ignoré: dernier clic il y a ${timeSinceLastClick}ms (< 1500ms)`);
                         console.log(`🖱️  === FIN CLIC ===\n`);
                         return;
                     }
@@ -323,16 +340,41 @@ class HaAutomation {
                     try {
                         console.log(`📥 Récupération du message ${messageId} depuis le canal...`);
                         // Récupérer le message depuis le client du compte i
-                        const channel = this.channels[i];
+                        const channel = this.channels[accountIndexForClick];
                         const msg = await channel.messages.fetch(messageId);
                         console.log(`✅ Message récupéré`);
                         
-                        console.log(`🖱️  Clic sur le bouton avec customId: ${customId}`);
-                        this.lastKakeraClickAt[i] = now;
-                        await msg.clickButton(customId);
-                        console.log(`✨ Compte ${i + 1} (${this.clients[i].user.username}) a cliqué sur kakeraD avec succès !`);
+                        console.log(`🖱️  Tentative de clic sur le bouton avec customId: ${customIdForClick}`);
+                        this.lastKakeraClickAt[accountIndexForClick] = now;
+                        
+                        // Essayer différentes méthodes de clic
+                        try {
+                            // Méthode 1: customId directement
+                            await msg.clickButton(customIdForClick);
+                            console.log(`✨ Compte ${accountIndexForClick + 1} (${this.clients[accountIndexForClick].user.username}) a cliqué sur kakeraD avec succès (méthode 1) !`);
+                        } catch (err1) {
+                            console.log(`⚠️  Méthode 1 échouée: ${err1?.message || err1}`);
+                            try {
+                                // Méthode 2: Objet avec customId
+                                await msg.clickButton({ customId: customIdForClick });
+                                console.log(`✨ Compte ${accountIndexForClick + 1} (${this.clients[accountIndexForClick].user.username}) a cliqué sur kakeraD avec succès (méthode 2) !`);
+                            } catch (err2) {
+                                console.log(`⚠️  Méthode 2 échouée: ${err2?.message || err2}`);
+                                try {
+                                    // Méthode 3: Utiliser l'objet bouton si disponible
+                                    if (targetButtonObject) {
+                                        await msg.clickButton(targetButtonObject);
+                                        console.log(`✨ Compte ${accountIndexForClick + 1} (${this.clients[accountIndexForClick].user.username}) a cliqué sur kakeraD avec succès (méthode 3) !`);
+                                    } else {
+                                        throw new Error('Aucune méthode de clic n\'a fonctionné');
+                                    }
+                                } catch (err3) {
+                                    throw err3;
+                                }
+                            }
+                        }
                     } catch (err) {
-                        console.error(`❌ Erreur compte ${i + 1} lors du clic:`);
+                        console.error(`❌ Erreur compte ${accountIndexForClick + 1} lors du clic:`);
                         console.error(`   Message: ${err?.message || err}`);
                         console.error(`   Stack: ${err?.stack || 'N/A'}`);
                     }
